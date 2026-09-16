@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Limit Watch · Debit Card Limit Monitoring</title>
+<style>
+  :root{
+    --bg:#F5F7F8; --surface:#FFFFFF; --ink:#10253A; --teal:#0E7C7B;
+    --amber:#C4622D; --muted:#5B6B7C; --line:#E4E9EC; --faint:#94A3AF;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  .wrap{ max-width:1100px; margin:0 auto; padding:28px 24px 48px; }
+  .eyebrow{ font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--teal); font-weight:700; margin-bottom:4px; }
+  h1{ font-family:Georgia,"Times New Roman",serif; font-size:30px; font-weight:600; margin:0; }
+  .sub{ color:var(--muted); font-size:13.5px; margin-top:4px; max-width:520px; }
+  .header-row{ display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px; margin-bottom:22px; }
+  .tiers{ display:flex; gap:10px; }
+  .tier-pill{ cursor:pointer; border-radius:10px; padding:10px 16px; min-width:88px; border:1.5px solid transparent; }
+  .tier-pill .count{ font-size:20px; font-weight:700; line-height:1; }
+  .tier-pill .label{ font-size:11.5px; font-weight:600; margin-top:3px; }
+  .tier-pill.Urgent{ background:#FBEAE1; color:var(--amber); }
+  .tier-pill.Recurring{ background:#E6F1F1; color:var(--teal); }
+  .tier-pill.Monitor{ background:#EEF1F3; color:var(--muted); }
+  .tier-pill.active{ border-color:currentColor; }
+
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:18px 22px; margin-bottom:20px; }
+  .card-title{ display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; margin-bottom:10px; }
+
+  .search-row{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .search-box{ position:relative; flex:0 1 320px; }
+  .search-box input{
+    width:100%; padding:9px 12px 9px 34px; border-radius:9px; border:1px solid var(--line);
+    font-size:13.5px; background:var(--surface); outline:none;
+  }
+  .search-box svg{ position:absolute; left:11px; top:10px; }
+  .clear-btn{ font-size:12.5px; color:var(--muted); background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:8px 12px; cursor:pointer; }
+
+  table{ width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+  thead th{
+    text-align:left; padding:10px 20px; font-size:11.5px; font-weight:700; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--line); background:var(--surface);
+  }
+  tbody td{ padding:14px 20px; border-bottom:1px solid #EEF1F3; font-size:13.5px; vertical-align:middle; }
+  tbody tr:last-child td{ border-bottom:none; }
+  .cust-name{ font-weight:600; }
+  .cust-id{ font-size:11.5px; color:var(--muted); margin-top:2px; }
+  .limit-type{ font-size:12.5px; color:var(--muted); }
+
+  .bar-track{ position:relative; height:6px; border-radius:3px; background:var(--line); width:130px; }
+  .bar-fill{ position:absolute; left:0; top:0; bottom:0; border-radius:3px; }
+  .bar-mark{ position:absolute; left:100%; top:-3px; width:1.5px; height:12px; background:var(--ink); }
+  .bar-pct{ font-size:11px; margin-top:4px; font-weight:600; }
+  .bar-amt{ font-size:11px; color:var(--muted); margin-top:2px; }
+
+  .pattern-monthly{ display:flex; align-items:center; gap:5px; font-size:12px; color:var(--teal); font-weight:600; }
+  .pattern-oneoff{ font-size:12px; color:var(--faint); }
+
+  .tier-badge{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px; }
+  .tier-badge.Urgent{ background:#FBEAE1; color:var(--amber); }
+  .tier-badge.Recurring{ background:#E6F1F1; color:var(--teal); }
+  .tier-badge.Monitor{ background:#EEF1F3; color:var(--muted); }
+
+  .contact-btn{
+    display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--ink);
+    background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:6px 10px; cursor:pointer;
+  }
+  .contacted-label{ display:flex; align-items:center; gap:5px; font-size:12.5px; font-weight:600; color:var(--teal); }
+
+  .empty-row td{ text-align:center; color:var(--muted); font-size:13.5px; padding:30px 20px; }
+  .footnote{ margin-top:16px; font-size:11.5px; color:var(--faint); }
+
+  #chart-svg{ display:block; width:100%; height:90px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header-row">
+    <div>
+      <div class="eyebrow">Card Ops · Debit Limit Monitoring</div>
+      <h1>Limit Watch</h1>
+      <div class="sub">Customers hitting their set limit, ranked by how urgently outreach should happen — updated daily</div>
+    </div>
+    <div class="tiers" id="tier-pills"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0E7C7B" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+      Exceed-limit declines, last 3 weeks
+    </div>
+    <svg id="chart-svg" viewBox="0 0 700 90" preserveAspectRatio="none"></svg>
+  </div>
+
+  <div class="search-row">
+    <div class="search-box">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5B6B7C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input id="search-input" type="text" placeholder="Search customer name or ID" />
+    </div>
+    <button class="clear-btn" id="clear-filter" style="display:none;">Clear filter</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Customer</th>
+        <th>Limit type</th>
+        <th>Usage vs. limit</th>
+        <th>7d</th>
+        <th>Pattern</th>
+        <th>Tier</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="table-body"></tbody>
+  </table>
+
+  <div class="footnote">
+    Built from synthetic UAT-schema debit transaction data (RETURN_CODE = 'Exceeds withdrawal limit'). Current limit is a proxy (not present in source data) derived as attempted amount ÷ 1.8, for illustration only. Tiers: Urgent = 2+ declines in 7 days · Recurring = pattern across 3+ months · Monitor = single low-signal decline.
+  </div>
+</div>
+
+<script>
+const TIER_ORDER = { Urgent: 0, Recurring: 1, Monitor: 2 };
+
+const CUSTOMERS = [
+  {
+    "id": "48606100****0409",
+    "name": "48606100****0409",
+    "limitType": "Daily ATM",
+    "currentLimit": 1630000,
+    "maxAttempted": 2931000,
+    "declines7d": 5,
+    "declines30d": 5,
+    "recurring": false,
+    "lastDecline": "Sep 15",
+    "tier": "Urgent"
+  },
+  {
+    "id": "48606100****3582",
+    "name": "48606100****3582",
+    "limitType": "Daily POS",
+    "currentLimit": 1640000,
+    "maxAttempted": 2944000,
+    "declines7d": 5,
+    "declines30d": 5,
+    "recurring": false,
+    "lastDecline": "Sep 16",
+    "tier": "Urgent"
+  },
+  {
+    "id": "48606100****9195",
+    "name": "48606100****9195",
+    "limitType": "Daily POS",
+    "currentLimit": 1650000,
+    "maxAttempted": 2976000,
+    "declines7d": 4,
+    "declines30d": 4,
+    "recurring": false,
+    "lastDecline": "Sep 16",
+    "tier": "Urgent"
+  },
+  {
+    "id": "48606100****2286",
+    "name": "48606100****2286",
+    "limitType": "Daily ATM",
+    "currentLimit": 1430000,
+    "maxAttempted": 2578000,
+    "declines7d": 3,
+    "declines30d": 3,
+    "recurring": false,
+    "lastDecline": "Sep 15",
+    "tier": "Urgent"
+  },
+  {
+    "id": "48606100****9674",
+    "name": "48606100****9674",
+    "limitType": "Daily ATM",
+    "currentLimit": 1090000,
+    "maxAttempted": 1954000,
+    "declines7d": 3,
+    "declines30d": 3,
+    "recurring": false,
+    "lastDecline": "Sep 12",
+    "tier": "Urgent"
+  },
+  {
+    "id": "48606100****2615",
+    "name": "48606100****2615",
+    "limitType": "Monthly Cumulative",
+    "currentLimit": 3040000,
+    "maxAttempted": 5467000,
+    "declines7d": 1,
+    "declines30d": 1,
+    "recurring": true,
+    "lastDecline": "Sep 12",
+    "tier": "Recurring"
+  },
+  {
+    "id": "48606101****2547",
+    "name": "48606101****2547",
+    "limitType": "Monthly Cumulative",
+    "currentLimit": 3290000,
+    "maxAttempted": 5923000,
+    "declines7d": 1,
+    "declines30d": 1,
+    "recurring": true,
+    "lastDecline": "Sep 13",
+    "tier": "Recurring"
+  },
+  {
+    "id": "48606101****9891",
+    "name": "48606101****9891",
+    "limitType": "Monthly Cumulative",
+    "currentLimit": 3090000,
+    "maxAttempted": 5568000,
+    "declines7d": 1,
+    "declines30d": 1,
+    "recurring": true,
+    "lastDecline": "Sep 12",
+    "tier": "Recurring"
+  },
+  {
+    "id": "48606100****1519",
+    "name": "48606100****1519",
+    "limitType": "Monthly Cumulative",
+    "currentLimit": 3040000,
+    "maxAttempted": 5480000,
+    "declines7d": 0,
+    "declines30d": 1,
+    "recurring": true,
+    "lastDecline": "Sep 6",
+    "tier": "Recurring"
+  },
+  {
+    "id": "48606101****3611",
+    "name": "48606101****3611",
+    "limitType": "Monthly Cumulative",
+    "currentLimit": 3180000,
+    "maxAttempted": 5721000,
+    "declines7d": 0,
+    "declines30d": 1,
+    "recurring": true,
+    "lastDecline": "Sep 5",
+    "tier": "Recurring"
+  },
+  {
+    "id": "48606100****3733",
+    "name": "48606100****3733",
+    "limitType": "Daily ATM",
+    "currentLimit": 650000,
+    "maxAttempted": 1165000,
+    "declines7d": 1,
+    "declines30d": 1,
+    "recurring": false,
+    "lastDecline": "Sep 14",
+    "tier": "Monitor"
+  },
+  {
+    "id": "48606101****8785",
+    "name": "48606101****8785",
+    "limitType": "Daily ATM",
+    "currentLimit": 730000,
+    "maxAttempted": 1312000,
+    "declines7d": 1,
+    "declines30d": 1,
+    "recurring": false,
+    "lastDecline": "Sep 10",
+    "tier": "Monitor"
+  },
+  {
+    "id": "48606100****1654",
+    "name": "48606100****1654",
+    "limitType": "Daily POS",
+    "currentLimit": 520000,
+    "maxAttempted": 936000,
+    "declines7d": 0,
+    "declines30d": 1,
+    "recurring": false,
+    "lastDecline": "Sep 8",
+    "tier": "Monitor"
+  },
+  {
+    "id": "48606100****9044",
+    "name": "48606100****9044",
+    "limitType": "Daily POS",
+    "currentLimit": 610000,
+    "maxAttempted": 1101000,
+    "declines7d": 0,
+    "declines30d": 1,
+    "recurring": false,
+    "lastDecline": "Sep 5",
+    "tier": "Monitor"
+  },
+  {
+    "id": "48606101****9459",
+    "name": "48606101****9459",
+    "limitType": "Daily ATM",
+    "currentLimit": 510000,
+    "maxAttempted": 914000,
+    "declines7d": 0,
+    "declines30d": 1,
+    "recurring": false,
+    "lastDecline": "Sep 4",
+    "tier": "Monitor"
+  }
+];
+
+const TREND = [0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 1, 0, 2, 2, 4, 5, 4, 6, 2];
+const TREND_LABELS = ["Aug 27", "Aug 28", "Aug 29", "Aug 30", "Aug 31", "Sep 1", "Sep 2", "Sep 3", "Sep 4", "Sep 5", "Sep 6", "Sep 7", "Sep 8", "Sep 9", "Sep 10", "Sep 11", "Sep 12", "Sep 13", "Sep 14", "Sep 15", "Sep 16"];
+
+let state = { tierFilter: "All", query: "", contacted: {} };
+
+function formatUGX(n){ return "UGX " + n.toLocaleString("en-UG"); }
+
+function renderChart(){
+  const svg = document.getElementById("chart-svg");
+  const w = 700, h = 90, pad = 10;
+  const max = Math.max(...TREND) * 1.15;
+  const stepX = (w - pad*2) / (TREND.length - 1);
+  const points = TREND.map((v,i) => {
+    const x = pad + i*stepX;
+    const y = h - pad - (v/max)*(h - pad*2);
+    return [x,y];
+  });
+  const linePath = points.map((p,i) => (i===0?"M":"L") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+  const areaPath = linePath + ` L${points[points.length-1][0].toFixed(1)},${h-pad} L${points[0][0].toFixed(1)},${h-pad} Z`;
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="fillGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#0E7C7B" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="#0E7C7B" stop-opacity="0.02"/>
+      </linearGradient>
+    </defs>
+    <path d="${areaPath}" fill="url(#fillGrad)" stroke="none"/>
+    <path d="${linePath}" fill="none" stroke="#0E7C7B" stroke-width="2"/>
+    ${points.map((p,i) => `<circle cx="${p[0]}" cy="${p[1]}" r="2.5" fill="#0E7C7B"><title>${TREND_LABELS[i]}: ${TREND[i]} declines</title></circle>`).join("")}
+  `;
+}
+
+function renderTierPills(){
+  const counts = { Urgent:0, Recurring:0, Monitor:0 };
+  CUSTOMERS.forEach(c => counts[c.tier]++);
+  const el = document.getElementById("tier-pills");
+  el.innerHTML = ["Urgent","Recurring","Monitor"].map(t => `
+    <div class="tier-pill ${t} ${state.tierFilter===t ? 'active':''}" data-tier="${t}">
+      <div class="count">${counts[t]}</div>
+      <div class="label">${t}</div>
+    </div>
+  `).join("");
+  el.querySelectorAll(".tier-pill").forEach(pill => {
+    pill.addEventListener("click", () => {
+      const t = pill.getAttribute("data-tier");
+      state.tierFilter = state.tierFilter === t ? "All" : t;
+      renderAll();
+    });
+  });
+}
+
+function renderTable(){
+  const body = document.getElementById("table-body");
+  const clearBtn = document.getElementById("clear-filter");
+  clearBtn.style.display = state.tierFilter !== "All" ? "inline-block" : "none";
+  clearBtn.textContent = "Clear filter · " + state.tierFilter;
+
+  let rows = CUSTOMERS.filter(c => {
+    if (state.tierFilter !== "All" && c.tier !== state.tierFilter) return false;
+    if (state.query && !(c.name + " " + c.id).toLowerCase().includes(state.query.toLowerCase())) return false;
+    return true;
+  }).sort((a,b) => TIER_ORDER[a.tier]-TIER_ORDER[b.tier] || b.declines7d-a.declines7d);
+
+  if (rows.length === 0) {
+    body.innerHTML = `<tr class="empty-row"><td colspan="7">No customers match this filter today.</td></tr>`;
+    return;
+  }
+
+  body.innerHTML = rows.map(c => {
+    const pct = Math.min(150, Math.round((c.maxAttempted / c.currentLimit) * 100));
+    const over = pct > 100;
+    const barColor = over ? "#C4622D" : "#0E7C7B";
+    const isContacted = !!state.contacted[c.id];
+
+    return `
+      <tr>
+        <td>
+          <div class="cust-name">${c.id}</div>
+          <div class="cust-id">Last decline ${c.lastDecline} · ${c.declines30d} in 30d</div>
+        </td>
+        <td class="limit-type">${c.limitType}</td>
+        <td>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${Math.min(100,pct)}%; background:${barColor};"></div>
+            <div class="bar-mark"></div>
+          </div>
+          <div class="bar-pct" style="color:${over ? '#C4622D' : '#5B6B7C'};">${pct}% of limit attempted</div>
+          <div class="bar-amt">${formatUGX(c.maxAttempted)} vs ${formatUGX(c.currentLimit)}</div>
+        </td>
+        <td style="font-weight:700;">${c.declines7d}</td>
+        <td>
+          ${c.recurring
+            ? `<span class="pattern-monthly">
+                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0E7C7B" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+                 Monthly
+               </span>`
+            : `<span class="pattern-oneoff">One-off</span>`}
+        </td>
+        <td>
+          <span class="tier-badge ${c.tier}">
+            ${c.tier === "Urgent" ? `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#C4622D" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>` : ""}
+            ${c.tier}
+          </span>
+        </td>
+        <td>
+          ${isContacted
+            ? `<span class="contacted-label">
+                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0E7C7B" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                 Contacted
+               </span>`
+            : `<button class="contact-btn" data-id="${c.id}">
+                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10253A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.902.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.908.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                 Mark contacted
+               </button>`}
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  body.querySelectorAll(".contact-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.contacted[btn.getAttribute("data-id")] = true;
+      renderTable();
+    });
+  });
+}
+
+function renderAll(){
+  renderTierPills();
+  renderTable();
+}
+
+document.getElementById("search-input").addEventListener("input", (e) => {
+  state.query = e.target.value;
+  renderTable();
+});
+document.getElementById("clear-filter").addEventListener("click", () => {
+  state.tierFilter = "All";
+  renderAll();
+});
+
+renderChart();
+renderAll();
+</script>
+</body>
+</html>
